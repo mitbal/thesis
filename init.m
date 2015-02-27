@@ -11,3 +11,4 @@ addpath('/home/iqbal/datasets/VOCdevkit/VOCcode');
 addpath('/home/iqbal/caffe/matlab/caffe');
 addpath('/home/iqbal/dependency/SelectiveSearchCodeIJCV');
 addpath('/home/iqbal/dependency/SelectiveSearchCodeIJCV/Dependencies');
+addpath('/home/iqbal/dependency/liblinear-1.96/matlab');
