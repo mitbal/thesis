@@ -11,11 +11,8 @@ num_test = size(test_imgs, 1);
 % Load trained SVM models
 load('svm_models/baseline.mat');
 
-for cls=1:20
-    disp(['Class: ' VOCCLASS{cls}]);
-    for ii=1:num_test
-        disp(['Image: ' num2str(ii)]);
-        im = imread([im_dir test_imgs{ii} '.jpg']);
-        detect(im, models{cls}, cls, test_imgs{ii});
-    end
+for ii=1:num_test
+    disp(['Image: ' num2str(ii)]);
+    im = imread([im_dir test_imgs{ii} '.jpg']);
+    detect(im, models, test_imgs{ii}, VOCCLASS);
 end
