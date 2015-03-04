@@ -36,11 +36,12 @@ for ii=1:num_test
     counter = counter + 1;
     
     if counter > max_img
-        save(['data/rcnn/test_' num2str(file_counter) '.mat'], 'tests');
+        disp(['Save to file']);
+        save(['data/rcnn/test_' num2str(file_counter) '.mat'], 'tests', '-v7.3');
         counter = 1;
         file_counter = file_counter + 1;
         clear tests; tests = cell(max_img, 1);
     end
 end
 
-save(['data/rcnn/test_' num2str(file_counter) '.mat'], 'tests');
+save(['data/rcnn/test_' num2str(file_counter) '.mat'], 'tests', '-v7.3');
