@@ -1,4 +1,4 @@
-function pruned_boxes = prune_detection(boxes, scores)
+function [pruned_boxes pruned_scores] = prune_detection(boxes, scores)
     
     num_boxes = size(boxes, 1);
     threshold = 0.5;
@@ -17,6 +17,7 @@ function pruned_boxes = prune_detection(boxes, scores)
     % coming from the same objects
     [S, C] = graphconncomp(sparse(D));
     pruned_boxes = zeros(S, 4);
+    pruned_scores = zeros(S, 1);
     for ii=1:S
         index = (ii == C);
         corresponding_boxes = boxes(index, :);
@@ -29,7 +30,8 @@ function pruned_boxes = prune_detection(boxes, scores)
         y2_mean = sum(corresponding_boxes(:, 3) .* mean_scores);
         x2_mean = sum(corresponding_boxes(:, 4) .* mean_scores);
         
-        pruned_boxes(ii, :) = [y1_mean x1_mean y2_mean x2_mean];
+        pruned_boxes(ii, :) = int32([y1_mean x1_mean y2_mean x2_mean]);
+        pruned_scores(ii) = max(corresponding_scores);
     end
 
 end
