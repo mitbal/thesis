@@ -1,12 +1,12 @@
-function features = extract_caffe_feature(patch)
+function features = extract_caffe_feature(patch, caffe_params)
     
-    model_file = 'models/rcnn/finetune_voc_2007_trainval_iter_100000.caffemodel';
-    def_file = 'models/rcnn/deploy.prototxt';
-    
+    def_file = ['models/' caffe_params.model '/' caffe_params.def_file];
+    model_file = ['models/' caffe_params.model '/' caffe_params.model_file];
+
     if caffe('is_initialized') == 0
         caffe('init', def_file, model_file);
         caffe('set_phase_test');
-        caffe('set_device', 0);
+        caffe('set_device', caffe_params.device);
         caffe('set_mode_gpu');
     end
     
