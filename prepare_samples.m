@@ -1,26 +1,41 @@
-% Load positive image from PASCAL VOC 2007 dataset
+% Extract ConvNet features from PASCAL VOC 2007 dataset
+% Each image will have its features, labels, and bounding boxes
+% saved into its own .mat file
 init;
 
-% Get training image file path
+% Get image file path
+dataset = exp_params.dataset;
 im_dir = [VOC07PATH 'JPEGImages/'];
 anno_dir = [VOC07PATH 'Annotations/'];
-fid = fopen([VOC07PATH 'ImageSets/Main/train.txt']);
-train_imgs = textscan(fid, '%s');
-train_imgs = train_imgs{1};     % because textscan return 1x1 cell
-num_train = length(train_imgs);
+fid = fopen([VOC07PATH 'ImageSets/Main/' dataset '.txt']);
+imgs = textscan(fid, '%s');
+imgs = imgs{1};     % because textscan return 1x1 cell
+num_imgs = length(imgs);
 
-% Initialization
-counter = 1;
+caffe_params.model = exp_params.net_model;
+caffe_params.model_file = exp_params.model_file;
+caffe_params.def_file = exp_params.def_file;
+caffe_params.device = exp_params.device;
+caffe_params.oversample = exp_params.oversample;
+
+disp(['Processing dataset: ' dataset]);
+disp(['Number of images: ' num2str(num_imgs)]);
+
+% Prepare positive samples
+% based on RCNN paper only ground truth bounding boxes
+% specially allocated for faster loading times
+disp('Preparing positive samples');
 labels = cell(1);
 features = cell(1);
-
-% Prepare positive samples, based on RCNN paper only ground truth bounding
-% boxes
-for ii=1:num_train
-    disp(['Images; ' num2str(ii) '/' num2str(num_train)]);
-    im_path = [im_dir train_imgs{ii} '.jpg'];
+regions = cell(1);
+ids = cell(1);
+counter = 1;
+tic
+for ii=1:num_imgs
+    disp(['Images: ' imgs{ii} ', ' num2str(ii) '/' num2str(num_imgs)]);
+    im_path = [im_dir imgs{ii} '.jpg'];
     im = imread(im_path);
-    rec = PASreadrecord([anno_dir train_imgs{ii} '.xml']);
+    rec = PASreadrecord([anno_dir imgs{ii} '.xml']);
     
     num_object = size(rec.objects, 2);
     for jj=1:num_object
@@ -32,34 +47,67 @@ for ii=1:num_train
         box = rec.objects(jj).bndbox;
         patch = im(box.ymin:box.ymax, box.xmin:box.xmax, :);
         
-        rep = extract_caffe_feature(patch);
+        % The important things to save, features, labels, image name, and
+        % and the region bounding boxes
+        rep = extract_caffe_feature(patch, caffe_params);
         labels{counter} = index;
         features{counter} = mean(rep, 2);
+        regions{counter} = [box.ymin box.xmin box.ymax, box.xmax];
+        ids{counter} = imgs{ii};
         counter = counter + 1;
     end
 end
+time = toc;
+disp('Saving...');
+save(['data/' caffe_params.model '/' dataset '/positive.mat'], 'features', ...
+    'labels', 'ids', 'regions', '-v7.3');
+disp(['Time: ' num2str(time)]);
 
-save('data/baseline_positive.mat', 'features', 'labels', '-v7.3');
 
 % Prepare negative samples
 % As indicated in RCNN paper, regions with less than 0.3 overlap with all
 % classes bounding boxes
-features = cell(1);
-counter = 1;
-file_counter = 1;
+% This will be labeled as 0, to indicate background
+% Other regions is marked as -1
 threshold = 0.3;
-for ii=1:num_train
-    disp(['Images; ' num2str(ii) '/' num2str(num_train)]);
-    im_path = [im_dir train_imgs{ii} '.jpg'];
+
+% Use precomputed selective search boxes, directly from the author website
+% RCNN also used the same boxes to get the result
+if exp_params.precomputed_boxes
+    ss = load(['data/selectivesearch/SelectiveSearchVOC2007' dataset]);
+end
+
+disp('Preparing negative samples');
+for ii=1:num_imgs
+    disp(['Images: ' imgs{ii} ', ' num2str(ii) '/' num2str(num_imgs)]);
+    im_path = [im_dir imgs{ii} '.jpg'];
     im = imread(im_path);
-    rec = PASreadrecord([anno_dir train_imgs{ii} '.xml']);
+    rec = PASreadrecord([anno_dir imgs{ii} '.xml']);
     
-    boxes = selective_search(im);
-    num_boxes = size(boxes, 1);
+    % Check if the features of this image has been extracted
+    if exist(['data/' caffe_params.model '/' dataset '/' imgs{ii} '.mat'], 'file')
+        disp('The features has been extracted')
+        continue;
+    end
     
+    % Use precomputed selective search boxes, or compute it with single
+    % strategy
+    if exp_params.precomputed_boxes
+        index = find(strcmp(ss.images, imgs{ii}));
+        bbox = ss.boxes{index};
+    else
+        bbox = selective_search(im, 'single');
+    end
+    
+    tic
+    num_boxes = size(bbox, 1);
+    features = cell(1);
+    labels = cell(1);
+    regions = cell(1);
+    counter = 1;
     for jj=1:num_boxes
         num_object = size(rec.objects, 2);
-        reg_box = boxes(jj, :);
+        reg_box = bbox(jj, :);
         is_background = 1;
         for kk=1:num_object
             obj = rec.objects(kk).bndbox;
@@ -72,21 +120,21 @@ for ii=1:num_train
             end
         end
         
-        if is_background == 1
-            region = im(reg_box(1):reg_box(3), reg_box(2):reg_box(4), :);
-            rep = extract_caffe_feature(region);
-            features{counter} = mean(rep, 2);
-            counter = counter + 1;
-            
-            if counter > 100000
-                disp(['Save... ' num2str(file_counter)]);
-                save(['data/baseline_negative_' num2str(file_counter) '.mat'], 'features', '-v7.3');
-                clear features; features = cell(1);
-                counter = 1;
-                file_counter = file_counter + 1;
-            end
+        region = im(reg_box(1):reg_box(3), reg_box(2):reg_box(4), :);
+        rep = extract_caffe_feature(region, caffe_params);
+        features{counter} = mean(rep, 2);
+        regions{counter} = reg_box(:);
+        if is_background
+            labels{counter} = 0;
+        else
+            labels{counter} = -1;
         end
+        counter = counter + 1;
     end
+    save(['data/' caffe_params.model '/' dataset '/' imgs{ii} '.mat'], ...
+        'features', 'regions', 'labels', '-v7.3');
+    time = toc;
+    disp(['Number of boxes: ' num2str(num_boxes) ' time: ' num2str(time)]);
 end
 
-save(['data/baseline_negative_' num2str(file_counter) '.mat'], 'features', '-v7.3');
+disp('Finish...');
