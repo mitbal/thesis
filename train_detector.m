@@ -30,14 +30,13 @@ pos_features = pos_features .* range;
 train_cache = cell(20, 1);
 for cls=1:20
     pos_index = (pos_labels==cls);
-    neg_index = (pos_labels~=cls);
     train_cache{cls}.pos = pos_features(pos_index, :);
-    train_cache{cls}.neg = pos_features(neg_index, :);
+    train_cache{cls}.neg = [];
 end
 
 pos_weight = 2;
 penalty = 0.001;
-mode = 3;
+mode = 1;
 
 % Train for each image
 for ii=1:num_imgs
@@ -49,19 +48,26 @@ for ii=1:num_imgs
     for jj=1:num_data
         data_features(jj, :) = train_data.features{jj}';
     end
-    for cls=1:20
+    for cls=1:1
         % Prepare training data
         disp(['Training class: ' VOCCLASS{cls} ' ' num2str(cls) '/20']);
         neg_index = (data_labels == 0);
         neg_features = data_features(neg_index, :);
         neg_features = neg_features .* range;
         
+        if isempty(train_cache{cls}.neg)
+            train_cache{cls}.neg = neg_features;
+        else
+            train_cache{cls}.neg = [train_cache{cls}.neg; neg_features];
+        end
+        
         num_neg = size(train_cache{cls}.neg, 1);
         num_pos = size(train_cache{cls}.pos, 1);
+        disp(['Before: pos: ' num2str(num_pos) ' neg: ' num2str(num_neg)]);
         
         train_features = sparse([train_cache{cls}.pos; train_cache{cls}.neg]);
         train_labels = [ones(num_pos, 1); -ones(num_neg, 1)];
-        options = ['-w1 ' num2str(pos_weight) ' -c ' num2str(penalty) ' -s ' mode];
+        options = ['-w1 ' num2str(pos_weight) ' -c ' num2str(penalty) ' -s ' num2str(mode)];
         model = train(train_labels, train_features, options);
         
         % Evaluate
@@ -80,13 +86,17 @@ for ii=1:num_imgs
         not_easy_samples = train_cache{cls}.neg(scores > -1, :);
         num_easy = size(train_cache{cls}.neg, 1) - size(not_easy_samples,1);
         train_cache{cls}.neg = not_easy_samples;
-        disp(['Number of easy samples ' num2str(num_easy)]);
+        %disp(['Number of easy samples ' num2str(num_easy)]);
         
-        % Then grow the cache by adding new hard negative from this dataset
-        scores = model.w * neg_features';
-        hard_samples = neg_features(scores > -1, :);
-        train_cache{cls}.neg = [train_cache{cls}.neg; hard_samples];
-        disp(['Number of hard samples ' num2str(size(hard_samples, 1))]);
+        num_neg = size(train_cache{cls}.neg, 1);
+        num_pos = size(train_cache{cls}.pos, 1);
+        disp(['After: pos: ' num2str(num_pos) ' neg: ' num2str(num_neg)]);
+        
+%         Then grow the cache by adding new hard negative from this dataset
+%         scores = model.w * neg_features';
+%         hard_samples = neg_features(scores > -1, :);
+%         train_cache{cls}.neg = [train_cache{cls}.neg; hard_samples];
+%         disp(['Number of hard samples ' num2str(size(hard_samples, 1))]);
         
         % Save the model for every iteration, so it can continue if
         % interrupted
