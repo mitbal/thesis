@@ -10,7 +10,7 @@ function features = extract_caffe_feature(patch, caffe_params)
         caffe('set_mode_gpu');
     end
     
-    images = {prepare_image(patch)};
+    images = {prepare_image(patch, caffe_params.oversample)};
     features = caffe('forward', images);
     features = permute(features{1}, [3 4 1 2]);
 end
